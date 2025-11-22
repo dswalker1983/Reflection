@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Reflection</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.nopromises.min.js"></script>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;background:#f8f9fc;color:#2c3e50}
+  .header{background:#3498db;color:white;padding:16px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+  h1{margin:0;font-size:1.9em;font-weight:800;letter-spacing:0.8px}
+  .controls{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;justify-content:center;align-items:center}
+  select,input,button{padding:11px 14px;font-size:15px;border-radius:8px;border:none;cursor:pointer}
+  select#classSelect{min-width:280px;max-width:400px;flex:1;background:white;color:#2c3e50}
+  input[type=date]{width:170px;background:white}
+  button{background:#2c3e50;color:white;font-weight:600;transition:0.2s}
+  button:hover{background:#1a252f}
+  button.green{background:#27ae60}
+  button.green:hover{background:#1e8449}
+  button.orange{background:#e67e22}
+  button.orange:hover{background:#d35400}
+  button.gray{background:#95a5a6}
+  button.gray:hover{background:#7f8c8d}
+  button.blue{background:#3498db}
+  button.blue:hover{background:#2980b9}
+  table{width:100%;border-collapse:collapse;margin:16px 8px;background:white;border-radius:10px;overflow:hidden;box-shadow:0 4px 15px rgba(0,0,0,.1)}
+  th{background:#34495e;color:white;padding:14px 10px;font-weight:500}
+  td{padding:10px 8px;vertical-align:middle;border-bottom:1px solid #eee}
+  td:first-child{font-weight:600;text-align:left;padding-left:16px}
+  select{padding:8px;font-size:14px;width:100%}
+  .att-col,.part-col{width:135px}
+  .score{font-size:1.7em;font-weight:bold;text-align:center;color:#27ae60}
+  .note-btn{width:42px;height:42px;border-radius:50%;border:none;cursor:pointer;background:#f39c12;color:white;font-size:22px;box-shadow:0 3px 10px rgba(0,0,0,0.2);transition:all 0.2s}
+  .note-btn:hover{transform:scale(1.15)}
+  .note-btn.has-note{background:#e74c3c !important;animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(231,76,60,0.7)}70%{box-shadow:0 0 0 12px rgba(231,76,60,0)}100%{box-shadow:0 0 0 0 rgba(231,76,60,0)}}
+  .note{display:none;width:100%;padding:12px;margin-top:8px;border:1px solid #ddd;border-radius:8px;font-size:14px}
+  .note.active{display:block}
+  .summary{margin:20px 10px;padding:16px;background:white;border-radius:10px;text-align:center;font-size:1.15em;font-weight:600;box-shadow:0 3px 10px rgba(0,0,0,.08)}
+  .modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);z-index:1000;justify-content:center;align-items:center}
+  .modal.active{display:flex}
+  .modal-content{background:white;padding:30px;width:90%;max-width:560px;border-radius:14px;box-shadow:0 15px 40px rgba(0,0,0,.3);position:relative}
+  .close{position:absolute;top:12px;right:18px;font-size:2em;cursor:pointer;color:#999}
+  .close:hover{color:#000}
+  .report-table{font-size:14px}
+  .report-table th{background:#2c3e50;color:white}
+  .report-table td,.report-table th{padding:10px;text-align:center}
+  .total-score{font-weight:bold;font-size:1.2em;color:#27ae60}
+  @media(max-width:700px){.controls{flex-direction:column}select#classSelect,input[type=date]{width:100%}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Reflection</h1>
+  <div class="controls">
+    <button onclick="openClassModal()">Classes</button>
+    <select id="classSelect" onchange="loadClass()"></select>
+    <input type="date" id="recordDate">
+    <button class="green" onclick="openStudentModal()">Students</button>
+    <button class="orange" onclick="showWeeklyReport()">Weekly Report</button>
+    <button class="gray" onclick="openDataModal()">Data</button>
+  </div>
+</div>
+
+<div id="tableContainer"></div>
+<div class="summary" id="summary">Select a class to begin</div>
+
+<!-- Modals -->
+<div id="weeklyModal" class="modal"><div class="modal-content" style="max-width:95%;width:auto;">
+  <span class="close" onclick="closeModal('weeklyModal')">×</span>
+  <h2>Weekly Participation Report</h2>
+  <div id="weeklyReportContent" style="max-height:70vh;overflow:auto;margin-top:20px"></div>
+</div></div>
+
+<div id="dataModal" class="modal"><div class="modal-content">
+  <span class="close" onclick="closeModal('dataModal')">×</span>
+  <h2>Data Management</h2>
+  <button class="green" onclick="exportAllData()" style="width:100%;margin:10px 0;padding:14px">Export Full Backup (CSV)</button>
+  
+  <button class="blue" onclick="document.getElementById('fileInput').click()" style="width:100%;margin:10px 0;padding:14px">
+    Import Backup from CSV
+  </button>
+  <input type="file" id="fileInput" accept=".csv,text/csv" style="display:none" onchange="importFromCSV(event)">
+
+  <button class="red" onclick="document.getElementById('deleteConfirm').classList.add('active')" style="width:100%;margin:10px 0;padding:14px">Delete All Data</button>
+</div></div>
+
+<div id="deleteConfirm" class="modal"><div class="modal-content">
+  <span class="close" onclick="closeModal('deleteConfirm')">×</span>
+  <h2 style="color:#c0392b">Delete Everything?</h2>
+  <p>This will permanently erase all classes, students, and records.</p>
+  <button class="red" onclick="deleteAllData()" style="width:100%;padding:14px">Yes, Delete All</button>
+  <button onclick="closeModal('deleteConfirm')" style="margin-top:10px;width:100%;background:#95a5a6">Cancel</button>
+</div></div>
+
+<div id="classModal" class="modal"><div class="modal-content">
+  <span class="close" onclick="closeModal('classModal')">×</span>
+  <h2>Manage Classes</h2>
+  <input type="text" id="newClassName" placeholder="New class name">
+  <button onclick="addClass()" style="margin:8px 0;width:100%">Add Class</button>
+  <div id="classList" style="margin-top:20px"></div>
+</div></div>
+
+<div id="studentModal" class="modal"><div class="modal-content">
+  <span class="close" onclick="closeModal('studentModal')">×</span>
+  <h2>Students: <span id="modalClassName"></span></h2>
+  <input type="text" id="newStudentName" placeholder="Student name">
+  <button onclick="addStudent()" style="margin:8px 0;width:100%">Add Student</button>
+  <div id="studentList" style="max-height:400px;overflow-y:auto;margin-top:16px;"></div>
+</div></div>
+
+<script>
+document.getElementById('recordDate').valueAsDate = new Date();
+const db = localforage.createInstance({name:"Reflection"});
+
+// === CLASS / STUDENT MANAGEMENT ===
+async function loadClassList(){
+  const classes = await db.getItem('classes') || [];
+  const sel = document.getElementById('classSelect');
+  sel.innerHTML = '<option value="">– Select Class –</option>';
+  classes.sort().forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = opt.textContent = c;
+    sel.appendChild(opt);
+  });
+}
+loadClassList();
+
+let currentClass = "";
+
+function openClassModal(){ document.getElementById('classModal').classList.add('active'); refreshClassList(); }
+function openStudentModal(){
+  currentClass = document.getElementById('classSelect').value;
+  if(!currentClass) return alert("Select a class first");
+  document.getElementById('modalClassName').textContent = currentClass;
+  document.getElementById('studentModal').classList.add('active');
+  refreshStudentList();
+}
+function openDataModal(){ document.getElementById('dataModal').classList.add('active'); }
+
+async function addClass(){
+  const name = document.getElementById('newClassName').value.trim();
+  if(!name) return alert("Enter class name");
+  let classes = await db.getItem('classes') || [];
+  if(classes.includes(name)) return alert("Already exists");
+  classes.push(name); await db.setItem('classes', classes);
+  document.getElementById('newClassName').value = "";
+  refreshClassList(); loadClassList();
+}
+
+async function removeClass(name){
+  if(!confirm(`Delete "${name}" and all its data?`)) return;
+  let classes = await db.getItem('classes') || [];
+  classes = classes.filter(c => c !== name);
+  await db.setItem('classes', classes);
+  await db.removeItem(`class_${name}_students`);
+  const keys = await db.keys();
+  for(const k of keys) if(k.startsWith(`record_${name}_`)) await db.removeItem(k);
+  loadClassList(); refreshClassList();
+  if(document.getElementById('classSelect').value === name){
+    document.getElementById('classSelect').value = ""; loadClass();
+  }
+}
+
+async function refreshClassList(){
+  const classes = await db.getItem('classes') || [];
+  const list = document.getElementById('classList');
+  list.innerHTML = "";
+  classes.sort().forEach(c => {
+    const div = document.createElement('div');
+    div.style.cssText = "padding:12px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #eee";
+    div.innerHTML = `<strong>${c}</strong><button class="red" style="padding:6px 12px" onclick="removeClass('${c}')">Remove</button>`;
+    list.appendChild(div);
+  });
+}
+
+async function addStudent(){
+  const name = document.getElementById('newStudentName').value.trim();
+  if(!name) return alert("Enter student name");
+  const students = await db.getItem(`class_${currentClass}_students`) || [];
+  if(students.includes(name)) return alert("Already in class");
+  students.push(name); await db.setItem(`class_${currentClass}_students`, students);
+  document.getElementById('newStudentName').value = "";
+  refreshStudentList();
+}
+
+async function removeStudent(name){
+  if(!confirm(`Remove ${name}?`)) return;
+  let students = await db.getItem(`class_${currentClass}_students`) || [];
+  students = students.filter(s => s !== name);
+  await db.setItem(`class_${currentClass}_students`, students);
+  refreshStudentList();
+}
+
+async function refreshStudentList(){
+  const students = await db.getItem(`class_${currentClass}_students`) || [];
+  const list = document.getElementById('studentList');
+  list.innerHTML = "";
+  students.sort().forEach(s => {
+    const div = document.createElement('div');
+    div.style.cssText = "padding:12px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #eee";
+    div.innerHTML = `<span>${s}</span><button class="red" style="padding:6px 12px" onclick="removeStudent('${s}')">Remove</button>`;
+    list.appendChild(div);
+  });
+}
+
+function closeModal(id){
+  document.getElementById(id).classList.remove('active');
+  if(id === 'studentModal') loadClass();
+}
+window.onclick = e => { if(e.target.classList.contains('modal')){ e.target.classList.remove('active'); if(e.target.id==='studentModal') loadClass(); } };
+
+// === DAILY VIEW & SCORING ===
+async function ensureDefaultRecord(className, date, student){
+  const key = `record_${className}_${date}_${student}`;
+  const rec = await db.getItem(key);
+  if(!rec){
+    await db.setItem(key, {attendance:"present",participation:"average",score:8});
+  }
+}
+
+async function loadClass(){
+  const className = document.getElementById('classSelect').value;
+  if(!className){ document.getElementById('tableContainer').innerHTML = ''; document.getElementById('summary').textContent = 'Select a class'; return; }
+  const students = await db.getItem(`class_${className}_students`) || [];
+  const date = document.getElementById('recordDate').value || new Date().toISOString().split('T')[0];
+
+  for(let student of students){
+    await ensureDefaultRecord(className, date, student);
+  }
+
+  let html = `<table><thead><tr><th>Student</th><th class="att-col">Attendance</th><th class="part-col">Participation</th><th>Score</th><th>Note</th></tr></thead><tbody>`;
+  for(let student of students.sort()){
+    const rec = await db.getItem(`record_${className}_${date}_${student}`);
+    const att = rec.attendance || "present";
+    const part = rec.participation || "average";
+    const score = calcScore(att, part);
+    const note = rec.note || "";
+    const hasNote = note.trim().length > 0;
+    html += `<tr>
+      <td>${student}</td>
+      <td class="att-col"><select onchange="save('${className}','${student}',this.value,null)">
+        <option value="present" ${att==='present'?'selected':''}>Present</option>
+        <option value="tardy" ${att==='tardy'?'selected':''}>Tardy</option>
+        <option value="absent" ${att==='absent'?'selected':''}>Absent</option>
+        <option value="excused" ${att==='excused'?'selected':''}>Excused</option>
+      </select></td>
+      <td class="part-col"><select onchange="save('${className}','${student}',null,this.value)">
+        <option value="exceptional" ${part==='exceptional'?'selected':''}>Exceptional (+2)</option>
+        <option value="engaged" ${part==='engaged'?'selected':''}>Engaged (+1)</option>
+        <option value="average" ${part==='average'?'selected':''}>Average</option>
+        <option value="disruptive" ${part==='disruptive'?'selected':''}>Disruptive (-1)</option>
+        <option value="sleeping" ${part==='sleeping'?'selected':''}>Sleeping (-3)</option>
+      </select></td>
+      <td class="score">${score}</td>
+      <td class="note-cell">
+        <button class="note-btn ${hasNote?'has-note':''}" onclick="this.nextElementSibling.classList.toggle('active')">
+          ${hasNote ? '?' : '+'}
+        </button>
+        <textarea class="note" placeholder="Add note..." onchange="save('${className}','${student}',null,null,this.value)">${note}</textarea>
+      </td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  document.getElementById('tableContainer').innerHTML = html;
+  updateSummary();
+}
+
+function calcScore(att, part){
+  if(att === "absent") return 0;
+  if(att === "excused") return 8;
+  let s = 8;
+  if(att === "tardy") s -= 1;
+  if(part === "exceptional") s += 2;
+  if(part === "engaged") s += 1;
+  if(part === "disruptive") s -= 1;
+  if(part === "sleeping") s -= 3;
+  return Math.max(0, s);
+}
+
+async function save(className, student, att, part, note){
+  const date = document.getElementById('recordDate').value || new Date().toISOString().split('T')[0];
+  const key = `record_${className}_${date}_${student}`;
+  let rec = await db.getItem(key) || {};
+  if(att !== null) rec.attendance = att;
+  if(part !== null) rec.participation = part;
+  if(note !== undefined) rec.note = note;
+  rec.score = calcScore(rec.attendance || "present", rec.participation || "average");
+  await db.setItem(key, rec);
+  loadClass();
+}
+
+async function updateSummary(){
+  const className = document.getElementById('classSelect').value;
+  const date = document.getElementById('recordDate').value || new Date().toISOString().split('T')[0];
+  if(!className) return;
+  const students = await db.getItem(`class_${className}_students`) || [];
+  let total = 0;
+  for(let s of students){
+    const rec = await db.getItem(`record_${className}_${date}_${s}`);
+    total += rec ? rec.score || 8 : 8;
+  }
+  const avg = students.length ? (total/students.length).toFixed(1) : 0;
+  document.getElementById('summary').textContent = `${className} • ${date} • ${students.length} students • Avg: ${avg}/8+`;
+}
+
+// === WEEKLY REPORT – ALWAYS STARTS ON MONDAY (7-day view) ===
+async function showWeeklyReport() {
+  const className = document.getElementById('classSelect').value;
+  if (!className) return alert("Select a class first");
+  const students = await db.getItem(`class_${className}_students`) || [];
+  if (students.length === 0) return alert("No students");
+
+  const input = document.getElementById('recordDate').value;
+  const today = input ? new Date(input + 'T12:00:00') : new Date();
+  today.setHours(12, 0, 0, 0);
+
+  // Reliable Monday calculation
+  const day = today.getDay();
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((day + 6) % 7));
+  monday.setHours(12, 0, 0, 0);
+
+  const dates = [];
+  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    dates.push({
+      yyyy_mm_dd: d.toISOString().split('T')[0],
+      label: dayNames[i] + '<br>' + d.toLocaleDateString(undefined, {month:'short', day:'numeric'})
+    });
+  }
+
+  let html = `<h3>${className} — Week of ${dates[0].label} – ${dates[6].label.replace('<br>', ' ')}</h3>
+  <table class="report-table"><thead><tr><th>Student</th>`;
+  dates.forEach(d => html += `<th style="font-size:0.9em">${d.label}</th>`);
+  html += `<th class="total-score">Mon–Fri<br>Total</th></tr></thead><tbody>`;
+
+  for (let student of students.sort()) {
+    let weekTotalMonFri = 0;
+    html += `<tr><td style="text-align:left;font-weight:600;padding-left:12px">${student}</td>`;
+    for (let i = 0; i < 7; i++) {
+      const date = dates[i].yyyy_mm_dd;
+      const rec = await db.getItem(`record_${className}_${date}_${student}`);
+      const score = rec?.score ?? (i < 5 ? 8 : '-');
+      if (i < 5 && score !== '-') weekTotalMonFri += score;
+      const display = (i >= 5) ? '—' : score;
+      html += `<td>${display}</td>`;
+    }
+    const bonus = weekTotalMonFri > 40 ? ` (+${weekTotalMonFri - 40})` : '';
+    html += `<td class="total-score">${weekTotalMonFri}/40${bonus}</td></tr>`;
+  }
+
+  html += `</tbody></table>
+  <p style="margin-top:20px;font-size:0.95em;color:#7f8c8d;text-align:center">
+    Right Click → Print
+  </p>`;
+
+  document.getElementById('weeklyReportContent').innerHTML = html;
+  document.getElementById('weeklyModal').classList.add('active');
+}
+
+// === EXPORT ALL DATA ===
+async function exportAllData(){
+  const classes = await db.getItem('classes') || [];
+  if(classes.length === 0) return alert("No data to export");
+  let csv = "Class,Date,Student,Attendance,Participation,Score,Note\n";
+  for(const c of classes){
+    const keys = await db.keys();
+    for(const k of keys.filter(k => k.startsWith(`record_${c}_`))){
+      const rec = await db.getItem(k);
+      const parts = k.split('_');
+      const date = parts[parts.length-2];
+      const student = parts[parts.length-1];
+      csv += `"${c}","${date}","${student}","${rec.attendance||'present'}","${rec.participation||'average'}","${rec.score||8}","${(rec.note||'').replace(/"/g,'""')}"\n`;
+    }
+  }
+  const blob = new Blob([csv],{type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Reflection_Backup_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// === IMPORT FROM CSV (NEW!) ===
+async function importFromCSV(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  if (!confirm(`Import "${file.name}"?\n\nThis will MERGE with existing data.\nClasses/students/records will be created or updated.\n\nContinue?`)) {
+    event.target.value = '';
+    return;
+  }
+
+  const text = await file.text();
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return alert("CSV is empty or invalid.");
+
+  const headers = lines[0].toLowerCase().split(',');
+  const expected = ['class','date','student','attendance','participation','score','note'];
+  if (!expected.every(h => headers.includes(h))) {
+    return alert("Invalid CSV format. Must contain columns: Class,Date,Student,Attendance,Participation,Score,Note");
+  }
+
+  let imported = 0, skipped = 0;
+
+  for (let i = 1; i < lines.length; i++) {
+    const row = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+    if (row.length < 7) { skipped++; continue; }
+
+    const [className, dateStr, student, att = 'present', part = 'average', scoreStr = '8', note = ''] = row;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) { skipped++; continue; }
+
+    // Auto-create class
+    let classes = await db.getItem('classes') || [];
+    if (!classes.includes(className)) {
+      classes.push(className);
+      await db.setItem('classes', classes);
+    }
+
+    // Auto-create student
+    let students = await db.getItem(`class_${className}_students`) || [];
+    if (!students.includes(student)) {
+      students.push(student);
+      await db.setItem(`class_${className}_students`, students);
+    }
+
+    // Save record
+    const key = `record_${className}_${dateStr}_${student}`;
+    const score = parseInt(scoreStr, 10) || 8;
+    await db.setItem(key, {
+      attendance: att,
+      participation: part,
+      score: score,
+      note: note
+    });
+    imported++;
+  }
+
+  await loadClassList();
+  if (document.getElementById('classSelect').value) loadClass();
+
+  alert(`Import complete!\n${imported} records imported\n${skipped} lines skipped`);
+  event.target.value = '';
+  closeModal('dataModal');
+}
+
+// === DELETE ALL DATA ===
+async function deleteAllData(){
+  if(!confirm("FINAL WARNING: This deletes EVERYTHING permanently.")) return;
+  await db.clear();
+  await db.setItem('classes', []);
+  loadClassList();
+  document.getElementById('tableContainer').innerHTML = '';
+  document.getElementById('summary').textContent = 'All data deleted';
+  closeModal('deleteConfirm');
+}
+
+document.getElementById('recordDate').addEventListener('change', () => {
+  if(document.getElementById('classSelect').value) loadClass();
+});
+</script>
+
+<p style="text-align:center;color:#95a5a6;font-size:0.9em;margin:20px">
+  Reflection • 100% offline • Made With Love D.S.W.
+</p>
+</body>
+</html>
